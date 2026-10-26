@@ -2,6 +2,8 @@
 
 == Unreleased
 
+== 0.1.0 (2026-10-26)
+
 * Fix: `appendItem`, `insertItem`, new mapping-item values and `set` on new keys no longer quote plain-safe values such as `./lib/index.js` next to plain siblings. New scalars take the majority sibling style (tie: nearest sibling), then the document's style, else plain; content-forced quotes (`'@antora/x'`, `'yes'`) are ignored, and type-changing or unsafe values are still quoted. Existing values keep their style. link:changelog-details/2026-10-26 - new scalars inherit sibling style.adoc[Details]
 * Initial comment- and format-preserving YAML library for D: lossless line CST (`Document` / `NodeRef`) with path get/set/remove, sequence append/insert/remove/find, trailing comments and byte-identical output for untouched text.
 * Flow collections, anchors, aliases and tags are preserved as opaque nodes; multi-document streams and other unsupported syntax fail with a line-numbered `YamlEditException`.
