@@ -1,7 +1,7 @@
 = Upstream plan: offering round-trip editing to D-YAML
 :toc:
 
-This is a plan only. Nothing has been filed upstream; any issue or PR to https://github.com/dlang-community/D-YAML[D-YAML] needs the maintainer's go-ahead first.
+This is a plan. Bug reports have been filed upstream (see <<bugs>>) and the approach was proposed on https://github.com/dlang-community/D-YAML/issues/53#issuecomment-6430165775[D-YAML #53 (Support for Comments)]; no PRs have been opened. Any PR to https://github.com/dlang-community/D-YAML[D-YAML] needs the maintainer's go-ahead first.
 
 == Goal
 
@@ -73,7 +73,13 @@ None of these would rename or remove anything; each is an alias or a new overloa
 [[bugs]]
 == D-YAML 0.10.0 bugs found
 
-Repro: `Loader.fromString(src).load()["a"]`.
+Repro: `Loader.fromString(src).load()["a"]`. Re-verified on D-YAML `master` 09aeac1 (v0.10.0-15) with LDC 1.42.0 on 2026-10-26.
+
+Filed upstream:
+
+* Large binary/hex/octal integers: https://github.com/dlang-community/D-YAML/issues/350[D-YAML #350]
+* Unanchored timestamp regex: https://github.com/dlang-community/D-YAML/issues/351[D-YAML #351]
+* Fractional seconds: not filed. It does not reproduce on `master` with LDC 1.42.0 (all 10,000 four-digit fractions load exactly, `43.10` gives 100 ms). The `cast(int)(to!real(...) * 10_000_000)` at `constructor.d` line 379 can still truncate on some platforms, so revisit if it shows up again.
 
 [cols="2,2,3"]
 |===
@@ -88,7 +94,7 @@ Repro: `Loader.fromString(src).load()["a"]`.
 |4294967296
 
 |`a: 2001-12-14t21:59:43.10-05:00`
-|43.0999999 s
+|43.0999999 s (not reproduced on master, see above)
 |43.1 s exactly (fraction parsed via floating point)
 
 |`a: 2001-12-14abc`
