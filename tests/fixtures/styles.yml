@@ -1,0 +1,43 @@
+plain: hello world
+single: 'it''s'
+double: "tab\tnew\nline \u00e9"
+empty:
+tilde: ~
+int: 42
+octal: 017
+hex: 0x1F
+float: 3.25
+exp: 1.0e+3
+inf: -.inf
+bools: [yes, No, on, OFF, true]
+date: 2026-10-26
+stamp: 2001-12-14t21:59:43.10-05:00
+"quoted key": v
+'single key': w
+123: numeric key
+literal: |
+  line one
+    indented
+  line three
+folded: >-
+  folded text
+  continues here
+
+  new paragraph
+keep: |+
+  kept
+
+multi plain: this plain
+  scalar spans
+  lines
+nested:
+  - a
+  -
+    - b
+    - c
+  - k: v
+    k2:
+      - deep
+  - {x: 1, y: [2, 3]}
+  - []
+  - {}

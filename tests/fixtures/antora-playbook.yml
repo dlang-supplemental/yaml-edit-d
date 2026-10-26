@@ -1,0 +1,43 @@
+# Antora playbook for the DLang Supplemental docs hub.
+# Managed partly by antorareg: keep the marker comments.
+site:
+  title: DLang Supplemental
+  url: https://docs.example.org
+  start_page: home::index.adoc   # hub portal
+  keys:
+    google_analytics: 'G-XXXXXXX'
+
+content:
+  sources:
+    - url: .
+      branches: HEAD
+      start_path: docs
+    - url: https://github.com/dlang-supplemental/kdl-d.git
+      branches: [main]
+      start_path: docs
+
+ui:
+  bundle:
+    url: https://example.org/ui-bundle.zip
+    snapshot: true
+  supplemental_files: ./supplemental-ui
+
+antora:
+  extensions:
+    - '@antora/lunr-extension'            # antorareg: lunr@1.0.0
+    - require: '@dev-centr/antora-search-chat'   # antorareg: search-chat@0.3.1
+      index_path: /search
+    - require: ./lib/page-context.js
+
+asciidoc:
+  attributes:
+    experimental: ''
+    page-pagination: ''
+    hide-uri-scheme: '@'
+    toc: ~
+  extensions:
+    - '@asciidoctor/tabs'
+
+output:
+  clean: true
+  dir: ./build/site

@@ -1,0 +1,7 @@
+defaults: &defaults
+  adapter: postgres
+  host: localhost
+dev:
+  <<: *defaults
+  database: dev
+tagged: !custom value
