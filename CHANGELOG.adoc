@@ -1,0 +1,10 @@
+= Changelog
+
+== Unreleased
+
+* Initial comment- and format-preserving YAML library for D: lossless line CST (`Document` / `NodeRef`) with path get/set/remove, sequence append/insert/remove/find, trailing comments and byte-identical output for untouched text.
+* Flow collections, anchors, aliases and tags are preserved as opaque nodes; multi-document streams and other unsupported syntax fail with a line-numbered `YamlEditException`.
+* `yaml_edit.compat.dyaml`: drop-in D-YAML API layer whose `dump` writes back the original document with only the changes applied.
+* Test suite: round trips, antorareg playbook edits, errors, D-YAML oracle and a dual-library consumer test.
+
+link:changelog-details/2026-10-26 - initial yaml-edit-d library.adoc[Details]

@@ -1,0 +1,22 @@
+= Initial yaml-edit-d library
+
+Round-trip YAML editing under `dlang-supplemental`.
+
+== Why
+
+antorareg and similar tools edit `antora-playbook.yml` files that people maintain by hand. D-YAML loads into a value tree and dumps a fresh document, so comments, quoting and layout are lost on every write. No DUB package offered format-preserving YAML editing.
+
+== What
+
+* `module yaml_edit`: `Document.parse` / `parseFile`, `emit` / `save`, path `get` / `set` / `has` / `remove` / `kind` / `keys` / `length`, `setEmpty`, `setRaw`, `source`
+* Sequence edits: `appendItem`, `insertItem`, `removeItem`, `findItem`, `toSequence`; trailing comments via `comment` / `setComment`
+* Edits splice lines, then reparse; a failed reparse rolls the edit back
+* New nodes copy neighbour indentation and quoting; typed-looking strings are quoted to keep their type
+* Opaque preservation for flow collections, anchors, aliases, tags and block scalars; clear errors for multi-document input, `?` keys, tabs and malformed text
+* `yaml_edit.compat.dyaml`: `Loader`, `Node`, `NodeType`, `dumper` and D-YAML exception types; a loaded tree is diffed against its snapshot at dump time and synced into the source document
+* Tests: byte-identical round trips (CRLF, BOM, no final newline, markers), antorareg edits on a realistic playbook, error cases, D-YAML 0.10 oracle and a dual-library consumer test
+
+== Notes
+
+* D-YAML is a test-only dependency.
+* Not yet published to DUB.

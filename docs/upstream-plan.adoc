@@ -1,0 +1,97 @@
+= Upstream plan: offering round-trip editing to D-YAML
+:toc:
+
+This is a plan only. Nothing has been filed upstream; any issue or PR to https://github.com/dlang-community/D-YAML[D-YAML] needs the maintainer's go-ahead first.
+
+== Goal
+
+Let D-YAML users keep comments and layout when they load, modify and dump a document, without breaking existing code. yaml-edit-d proves the approach outside D-YAML first: `yaml_edit.compat.dyaml` exposes D-YAML's API, and `tests/yaml_edit_tests/dual.d` runs identical consumer code against both libraries.
+
+== How yaml-edit-d maps onto D-YAML's pipeline
+
+[cols="1,2,2"]
+|===
+|D-YAML stage |yaml-edit-d equivalent |Upstream change
+
+|`Reader`
+|`Line { text, eol }` array; BOM and line endings kept
+|Keep raw source slice alongside the decoded buffer
+
+|`Scanner` / `Parser`
+|Line-oriented block parser recording first/last line, key span, value span, trailing comment per node
+|Add start *and end* `Mark` plus comment tokens to events (opt-in)
+
+|`Composer`
+|CST nodes (`scalar`, `mapping`, `sequence`, `opaque`) holding line spans
+|Optional `SourceSpan` field on `Node`
+
+|`Resolver` / `Constructor`
+|Same YAML 1.1 regexes; values built lazily from spans
+|No change (bug fixes below)
+
+|`Representer` / `Serializer` / `Emitter`
+|`Document.emit` joins untouched lines; edits splice replacements styled after neighbours
+|New `Emitter` mode: replay source for unchanged spans
+|===
+
+== PR series
+
+Each PR is independently useful and mergeable in order.
+
+. *Bug fixes found while testing* (small, ~50 lines + tests). Hex/octal/binary integers via `to!long`; exact fractional seconds; anchored timestamp resolution. See <<bugs>>.
+. *End marks on nodes* (small, ~100 lines). Record `endMark` next to `startMark` in the composer. Additive.
+. *Comment tokens* (medium, ~300 lines). Scanner emits comment tokens behind a `Loader` flag (`keepComments`, default off). Parser attaches them to the preceding event. No behaviour change when off.
+. *Source spans on `Node`* (medium, ~200 lines). `Node.sourceSpan` (byte range into the loaded buffer) and `Loader.source` keeping the buffer alive. Additive.
+. *Round-trip dumper* (large, ~800 lines). `dumper().preserving(original)` diffs the tree against the loaded snapshot and replays unchanged spans, mirroring `yaml_edit.compat.dyaml`'s sync step (mapping add/remove/recurse, LCS for sequences, neighbour-style new nodes, type-preserving quoting).
+. *Path editing helpers* (medium, optional). `get`/`set` by path and `appendItem`/`findItem`, as additive functions in a new `dyaml.edit` module.
+
+Anchors, aliases and tags would be handled upstream as part of PR 5 (yaml-edit-d currently keeps them opaque).
+
+== Naming improvements to offer as additive aliases
+
+None of these would rename or remove anything; each is an alias or a new overload.
+
+* `Node.has(key)` as an alias of `containsKey` (shorter, matches `Document.has`)
+* `Node.keys` / `Node.values` returning arrays, next to the lazy `mappingKeys` / `mappingValues`
+* `Node.kind` alias for `nodeID` (`NodeID` reads as an identifier, not a kind)
+* `Loader.parse(string)` alias for `Loader.fromString(...).load()` for the common one-document case
+* `Node.emit()` / `toYaml()` returning a string, instead of building a `Dumper` and an `Appender`
+* `Node.get(path, fallback)` for dotted-path reads with a default
+* `Node.appendItem` as a clearer name for one-argument `add` on sequences (two-argument `add` stays for mappings)
+* `YAMLException` subclasses carrying `line` / `column` fields rather than only a formatted message
+
+== Divergences kept in compat
+
+* `mappingKeys`, `mappingValues`, `sequence` return arrays (simpler to compare and index; semantic superset for `foreach`)
+* `Node.document()` extra: the backing `yaml_edit.Document`
+* `startMark` is a simplified `Mark` (name, line, column)
+* Anchors, aliases, tags, merge keys, multi-document input: `LoaderException`
+* Timestamps stay as source text
+* No `!!binary`, custom constructors/representers, or `Dumper` styles
+* Large hex/octal/binary integers load (D-YAML throws)
+
+[[bugs]]
+== D-YAML 0.10.0 bugs found
+
+Repro: `Loader.fromString(src).load()["a"]`.
+
+[cols="2,2,3"]
+|===
+|Input |D-YAML result |Expected
+
+|`a: 0x100000000`
+|`LoaderException: Unable to parse integer value`
+|4294967296 (`constructLong` uses `to!int` for 0x/0b/0 prefixes)
+
+|`a: 040000000000`
+|same exception
+|4294967296
+
+|`a: 2001-12-14t21:59:43.10-05:00`
+|43.0999999 s
+|43.1 s exactly (fraction parsed via floating point)
+
+|`a: 2001-12-14abc`
+|timestamp `2001-12-14T00:00:00Z` (text `abc` silently dropped)
+|string (timestamp regex alternatives not anchored with `^...$` as a group)
+|===
