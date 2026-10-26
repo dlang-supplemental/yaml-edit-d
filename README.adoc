@@ -58,6 +58,7 @@ It is written from scratch (not a D-YAML fork) and has no runtime dependencies b
 * Sequences: `appendItem`, `insertItem`, `removeItem`, `findItem` (scalar items or small mappings, optional trailing marker comment)
 * Comments: read and replace the trailing comment of any key or item
 * `setEmpty` (`[]` / `{}`), `setRaw` (verbatim one-line YAML), `toSequence`, `source` (raw text of a node)
+* New scalars copy their siblings' style: the most common of plain, single- or double-quoted among sibling items or keys (a tie goes to the nearest sibling), then values under the same key elsewhere in the document, then any scalar in the document, else plain. Quotes a sibling needs only because of its content (`'@antora/x'`) do not count.
 * Typed-looking strings (`yes`, `1.0`, `~`, `y`, ...) are quoted automatically so their type never changes
 * Drop-in D-YAML layer: `yaml_edit.compat.dyaml`
 

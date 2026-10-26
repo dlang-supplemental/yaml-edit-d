@@ -1,0 +1,23 @@
+= New scalars inherit sibling style
+
+== Why
+
+antorareg reported that `appendItem` and `insertItem` sometimes single-quoted plain-safe values such as `./lib/index.js` even though the surrounding extension entries were plain. The style was copied from the single nearest item, so a neighbour like `'@antora/lunr-extension'` (quoted only because `@` cannot start a plain scalar) made the new entry quoted too.
+
+== Rule
+
+When no style is given (`ScalarStyle.preserve`), a new scalar's style is chosen in this order:
+
+. Sibling scalars: items of the same sequence; for a mapping item, values under the same key in the other items, then their other values; for `set` on a new key, the other values in the same mapping. The most common style wins; a tie goes to the nearest sibling.
+. Values under the same key anywhere in the document, then any scalar in the document, by the same majority rule.
+. Plain.
+
+Only "voluntary" styles vote: plain scalars, and quoted scalars whose text would have been safe and untyped as plain. Quotes forced by content do not vote, nor do nulls or block scalars.
+
+Safety still wins: if the chosen style is plain but the value is not plain-safe or would change type (`yes`, `1.0`, `~`, ...), it is quoted (double quotes if the chosen style was double, else single).
+
+Edits to existing values keep that value's own style, as before.
+
+== Tests
+
+`tests/yaml_edit_tests/style_inherit.d` and fixture `tests/fixtures/playbook-local-ext.yml`: plain `./lib/...` entries next to a quoted `@antora/...` entry, mapping items, majority and tie cases, double quotes, safety quoting, new keys via `set`, and existing-value edits.

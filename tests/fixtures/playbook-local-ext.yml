@@ -1,0 +1,9 @@
+site:
+  title: Docs
+antora:
+  extensions:
+    - '@antora/lunr-extension'
+    - ./lib/tabs-block.js
+    - ./lib/glossary.js   # antorareg
+    - require: ./lib/collector.js
+      enabled: true

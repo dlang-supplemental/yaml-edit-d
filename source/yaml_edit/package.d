@@ -45,7 +45,15 @@ enum NodeKind
 /// Scalar presentation style.
 enum ScalarStyle
 {
-    preserve,     /// keep the existing style, or copy a neighbour's for new nodes
+    /**
+    Keep an existing value's style. A new scalar takes the most common style
+    among its sibling scalars (plain, single or double quotes; a tie goes to
+    the nearest sibling), then among values under the same key in the
+    document, then any scalar in the document, else plain. Quotes a sibling
+    needs only because of its content (`'@x'`, `'yes'`) do not count. Values
+    that are not plain-safe or would change type as plain are still quoted.
+    */
+    preserve,
     plain,
     singleQuoted,
     doubleQuoted,
@@ -1386,21 +1394,110 @@ final class Document
         return plainSafe(k) && !looksTyped(k) ? k : (k.canFind('\n') ? escapeDouble(k) : "'" ~ k.replace("'", "''") ~ "'");
     }
 
-    private static ScalarStyle firstScalarStyle(Node m, string key)
+    /**
+    Style vote of an existing scalar: plain, or a quote style the author chose
+    although plain would have been safe. Quotes forced by the content (`@x`,
+    `yes`, `a: b`) say nothing about the file's style and do not vote.
+    */
+    private static bool styleVote(Node v, out ScalarStyle st)
     {
-        if (m is null) return ScalarStyle.preserve;
-        if (m.kind == NodeKind.scalar && !m.multiline && key is null) return m.style;
-        if (m.kind != NodeKind.mapping) return ScalarStyle.preserve;
+        if (v is null || v.kind != NodeKind.scalar || v.multiline) return false;
+        if (v.style == ScalarStyle.plain) { if (v.isNullLiteral) return false; st = v.style; return true; }
+        if (v.style != ScalarStyle.singleQuoted && v.style != ScalarStyle.doubleQuoted) return false;
+        if (!plainSafe(v.value) || looksTyped(v.value)) return false;
+        st = v.style;
+        return true;
+    }
+
+    /**
+    Style for a new scalar given candidate siblings ordered nearest first:
+    the most common voting style; a tie goes to the nearest voting sibling.
+    `preserve` when nobody votes.
+    */
+    private static ScalarStyle majorityStyle(Node[] nearestFirst)
+    {
+        size_t[3] count;
+        ScalarStyle[] order;
+        static size_t ix(ScalarStyle s)
+        {
+            return s == ScalarStyle.plain ? 0 : s == ScalarStyle.singleQuoted ? 1 : 2;
+        }
+        foreach (v; nearestFirst)
+        {
+            ScalarStyle st;
+            if (!styleVote(v, st)) continue;
+            if (count[ix(st)]++ == 0) order ~= st;
+        }
+        if (!order.length) return ScalarStyle.preserve;
+        auto best = order[0];
+        foreach (st; order[1 .. $]) if (count[ix(st)] > count[ix(best)]) best = st;
+        return best;
+    }
+
+    private void collectScalars(Node n, ref Node[] acc, string key = null)
+    {
+        if (n is null) return;
+        if (n.kind == NodeKind.scalar) { if (key is null) acc ~= n; return; }
+        foreach (e; n.entries)
+        {
+            if (e.slot.value !is null && e.slot.value.kind == NodeKind.scalar)
+            { if (key is null || e.key == key) acc ~= e.slot.value; }
+            else collectScalars(e.slot.value, acc, key);
+        }
+        foreach (it; n.items) collectScalars(it.slot.value, acc, key);
+    }
+
+    /// Document-wide fallback: values under the same key anywhere, then any scalar, else preserve.
+    private ScalarStyle documentStyle(string key)
+    {
+        Node[] acc;
         if (key !is null)
-            foreach (e; m.entries)
-                if (e.key == key && e.slot.value !is null && e.slot.value.kind == NodeKind.scalar
-                    && !e.slot.value.multiline)
-                    return e.slot.value.style;
-        foreach (e; m.entries)
-            if (e.slot.value !is null && e.slot.value.kind == NodeKind.scalar && !e.slot.value.multiline
-                && e.slot.value.style != ScalarStyle.plain)
-                return e.slot.value.style;
-        return ScalarStyle.preserve;
+        {
+            collectScalars(root_, acc, key);
+            auto st = majorityStyle(acc);
+            if (st != ScalarStyle.preserve) return st;
+            acc = null;
+        }
+        collectScalars(root_, acc);
+        return majorityStyle(acc);
+    }
+
+    /// Sibling style for a new scalar item (key null) or a new `key` in a mapping item, inserted at `pos` of `sq`.
+    private ScalarStyle itemStyle(Node sq, size_t pos, string key)
+    {
+        Node[] same, others;
+        if (sq !is null && sq.kind == NodeKind.sequence)
+        {
+            size_t[] idx;
+            foreach (i; 0 .. sq.items.length) idx ~= i;
+            import std.algorithm : sort;
+            idx.sort!((a, b) => (a >= pos ? a - pos : pos - a - 1) < (b >= pos ? b - pos : pos - b - 1));
+            foreach (i; idx)
+            {
+                auto v = sq.items[i].slot.value;
+                if (v is null) continue;
+                if (key is null) { if (v.kind == NodeKind.scalar) same ~= v; continue; }
+                if (v.kind != NodeKind.mapping) continue;
+                foreach (e; v.entries)
+                    if (e.slot.value !is null && e.slot.value.kind == NodeKind.scalar)
+                        (e.key == key ? same : others) ~= e.slot.value;
+            }
+        }
+        auto st = majorityStyle(same);
+        if (st == ScalarStyle.preserve) st = majorityStyle(others);
+        if (st == ScalarStyle.preserve) st = documentStyle(key);
+        return st;
+    }
+
+    /// Sibling style for a new key appended to mapping `m` (null: no siblings).
+    private ScalarStyle mappingStyle(Node m, string key)
+    {
+        Node[] sib;
+        if (m !is null && m.kind == NodeKind.mapping)
+            foreach_reverse (e; m.entries)
+                if (e.slot.value !is null && e.slot.value.kind == NodeKind.scalar) sib ~= e.slot.value;
+        auto st = majorityStyle(sib);
+        return st != ScalarStyle.preserve ? st : documentStyle(key);
     }
 
     private void createPath(Seg[] segs, Found f, string value, ScalarStyle style, bool emptyValue, bool raw = false)
@@ -1411,7 +1508,6 @@ final class Document
                 throw new YamlEditException("cannot create sequence items through a path; use appendItem/insertItem");
         auto at = f.node;
         size_t indent, insertAt;
-        ScalarStyle nb = ScalarStyle.preserve;
         if (f.depth == 0 && root_ is null)
         {
             indent = 0;
@@ -1421,7 +1517,6 @@ final class Document
         {
             indent = at.indent;
             insertAt = at.last + 1;
-            nb = firstScalarStyle(at, null);
         }
         else if (at is null && f.depth > 0)
         {
@@ -1452,7 +1547,7 @@ final class Document
             if (i + 1 < rem.length) { out_ ~= k; ind += step; continue; }
             if (emptyValue) { out_ ~= k; break; }
             if (raw) { out_ ~= k ~ " " ~ value; break; }
-            auto st = resolveStyle(value, style, null, i == 0 ? nb : ScalarStyle.preserve);
+            auto st = resolveStyle(value, style, null, mappingStyle(i == 0 ? at : null, sg.key));
             if (st == ScalarStyle.literal)
             {
                 auto b = blockLiteral(value, ind + step, ind);
@@ -1561,19 +1656,20 @@ final class Document
             dashCol = nb.dashCol;
             gap = itemGap(nb);
         }
-        replaceLines(insertAt, insertAt, renderItem(dashCol, gap, iv, comment, nb));
+        size_t pos = sq is null || sq.kind != NodeKind.sequence ? 0
+            : (index < 0 || index >= cast(long) sq.items.length ? sq.items.length : cast(size_t) index);
+        replaceLines(insertAt, insertAt, renderItem(dashCol, gap, iv, comment, nb, sq, pos));
     }
 
-    private string[] renderItem(size_t dashCol, size_t gap, ItemVal iv, string comment, Item nb)
+    private string[] renderItem(size_t dashCol, size_t gap, ItemVal iv, string comment, Item nb, Node sq, size_t pos)
     {
         string pre = pad(dashCol) ~ "-" ~ pad(gap);
         size_t contentCol = dashCol + 1 + gap;
         string cmt = comment.length ? commentGap(nb) ~ "# " ~ comment : "";
-        Node nv = nb is null ? null : nb.slot.value;
         string[] out_;
         if (!iv.isMap)
         {
-            auto st = resolveStyle(iv.scalar, ScalarStyle.preserve, null, firstScalarStyle(nv, null));
+            auto st = resolveStyle(iv.scalar, ScalarStyle.preserve, null, itemStyle(sq, pos, null));
             if (st == ScalarStyle.literal)
             {
                 auto b = blockLiteral(iv.scalar, contentCol, dashCol);
@@ -1585,7 +1681,7 @@ final class Document
         {
             string lead = i == 0 ? pre : pad(contentCol);
             string c = i == 0 ? cmt : "";
-            auto st = resolveStyle(kv[1], ScalarStyle.preserve, null, firstScalarStyle(nv, kv[0]));
+            auto st = resolveStyle(kv[1], ScalarStyle.preserve, null, itemStyle(sq, pos, kv[0]));
             string ln = lead ~ fmtKey(kv[0]) ~ ":";
             if (st == ScalarStyle.literal)
             {
