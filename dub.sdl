@@ -1,0 +1,21 @@
+name "yaml-edit"
+description "Comment- and format-preserving (round-trip) YAML editing for D, with a thin D-YAML compatibility layer"
+homepage "https://github.com/dlang-supplemental/yaml-edit-d"
+authors "amdphreak"
+copyright "Copyright © 2026, amdphreak"
+license "BSL-1.0"
+# Version comes from git tags (vX.Y.Z).
+
+targetType "library"
+importPaths "source"
+sourcePaths "source"
+
+configuration "library" {
+}
+
+configuration "unittest" {
+	dependency "dyaml" version="~>0.10.0"
+	sourcePaths "source" "tests"
+	importPaths "source" "tests"
+	stringImportPaths "tests/fixtures"
+}
