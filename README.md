@@ -1,0 +1,153 @@
+<a id="readme-top"></a>
+<div align="center">
+<a href="https://code.dlang.org/packages/yaml-edit"><img src="https://img.shields.io/dub/v/yaml-edit.svg?style=for-the-badge" alt="Dub version"></a>
+<a href="https://github.com/dlang-supplemental/yaml-edit-d/graphs/contributors"><img src="https://img.shields.io/github/contributors/dlang-supplemental/yaml-edit-d.svg?style=for-the-badge" alt="Contributors"></a>
+<a href="https://github.com/dlang-supplemental/yaml-edit-d/network/members"><img src="https://img.shields.io/github/forks/dlang-supplemental/yaml-edit-d.svg?style=for-the-badge" alt="Forks"></a>
+<a href="https://github.com/dlang-supplemental/yaml-edit-d/stargazers"><img src="https://img.shields.io/github/stars/dlang-supplemental/yaml-edit-d.svg?style=for-the-badge" alt="Stars"></a>
+<a href="https://github.com/dlang-supplemental/yaml-edit-d/issues"><img src="https://img.shields.io/github/issues/dlang-supplemental/yaml-edit-d.svg?style=for-the-badge" alt="Issues"></a>
+<a href="https://github.com/dlang-supplemental/yaml-edit-d/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dlang-supplemental/yaml-edit-d.svg?style=for-the-badge" alt="License"></a>
+<br />
+<h3 align="center">yaml-edit-d</h3>
+<p align="center">
+Comment- and format-preserving (round-trip) YAML editing for the D programming language.<br />
+<a href="https://github.com/dlang-supplemental/yaml-edit-d/issues">Report Bug</a>
+&middot;
+<a href="https://github.com/dlang-supplemental/yaml-edit-d/issues">Request Feature</a>
+</p>
+</div>
+
+
+Package name on DUB: `yaml-edit`.
+
+## About The Project
+
+Tools that rewrite config files (an `antora-playbook.yml`, a CI workflow, a compose file) should change only what they mean to change. Load-modify-dump with a value-tree library such as D-YAML loses comments, quoting, key order details, blank lines and indentation.
+
+yaml-edit keeps the document as a lossless concrete syntax tree over the original lines. Every edit splices only the lines it touches; everything else is emitted byte for byte, including CRLF line endings, a BOM, a missing final newline, `%YAML` / `---` / `...` markers and trailing comments. New nodes copy the indentation and quoting style of their neighbours.
+
+It is written from scratch (not a D-YAML fork) and has no runtime dependencies beyond Phobos. D-YAML is used only by the test suite, as an oracle.
+
+## Features
+
+* Path API: `get` / `set` / `has` / `remove` with paths like `site.keys.google_analytics`, `antora.extensions[0].require`, `a."dotted.key"`, `items[-1]`
+* Missing intermediate mappings are created on `set`
+* Sequences: `appendItem`, `insertItem`, `removeItem`, `findItem` (scalar items or small mappings, optional trailing marker comment)
+* Comments: read and replace the trailing comment of any key or item
+* `setEmpty` (`[]` / `{}`), `setRaw` (verbatim one-line YAML), `toSequence`, `source` (raw text of a node)
+* New scalars copy their siblings' style: the most common of plain, single- or double-quoted among sibling items or keys (a tie goes to the nearest sibling), then values under the same key elsewhere in the document, then any scalar in the document, else plain. Quotes a sibling needs only because of its content (`'@antora/x'`) do not count.
+* Typed-looking strings (`yes`, `1.0`, `~`, `y`, ...) are quoted automatically so their type never changes
+* Drop-in D-YAML layer: `yaml_edit.compat.dyaml`
+
+### v1 scope
+
+Supported for editing: block mappings and sequences (including indentless sequences), plain, single- and double-quoted scalars, comments, and literal / folded block scalars (kept opaque).
+
+Preserved but not editable inside: flow collections (`[a, b]`, `{k: v}`), anchors, aliases, tags and merge keys. They are kept byte for byte as opaque nodes; reading through them or editing inside them raises `YamlEditException` with the line and reason. A whole flow value can still be replaced.
+
+Rejected with a clear error: multi-document streams, complex (`?`) keys, tab indentation, unterminated quotes, inconsistent indentation.
+
+## Usage
+
+```d
+import yaml_edit;
+
+auto doc = Document.parse(
+    "# Site playbook\n" ~
+    "site:\n" ~
+    "  title: Docs   # shown in the header\n" ~
+    "antora:\n" ~
+    "  extensions:\n" ~
+    "    - '@antora/lunr-extension'\n");
+
+assert(doc.get("site.title") == "Docs");
+doc.set("site.title", "Dev Docs");               // comment and spacing kept
+doc.set("site.url", "https://docs.example.org"); // missing key created
+doc.appendItem("antora.extensions", "@antora/collector-extension", "antorareg");
+
+writeln(doc.emit());
+```
+
+Output (only the edited lines differ):
+
+```yaml
+# Site playbook
+site:
+  title: Dev Docs   # shown in the header
+  url: https://docs.example.org
+antora:
+  extensions:
+    - '@antora/lunr-extension'
+    - '@antora/collector-extension'  # antorareg
+```
+
+This example is compiled and checked by `tests/yaml_edit_tests/readme.d`.
+
+Files: `Document.parseFile(path)` and `doc.save(path)`.
+
+### Coming from D-YAML
+
+Change one import:
+
+```d
+// import dyaml;
+import yaml_edit.compat.dyaml;
+
+auto root = Loader.fromFile("antora-playbook.yml").load();
+root["site"]["title"] = "Dev Docs";
+dumper().dump(File("antora-playbook.yml", "w").lockingTextWriter, root);
+```
+
+`Loader`, `Node`, `NodeType`, `dumper`, `as!T`, `opIndex`, `containsKey`, `add`, `remove`, `removeAt`, `sequence`, `mapping`, `opApply` and the exception types behave like D-YAML 0.10. The difference is the output: a `Node` loaded from a document remembers it, and `dump` writes the original text with only your changes applied. `tests/yaml_edit_tests/dual.d` runs the same consumer code against both libraries.
+
+Known differences from D-YAML (also in [docs/upstream-plan.adoc](docs/upstream-plan.adoc)):
+
+* Anchors, aliases, tags, merge keys and multi-document streams raise `LoaderException`
+* `mappingKeys`, `mappingValues` and `sequence` return arrays rather than lazy ranges
+* Timestamps are kept as their source text; `as!string` returns it unchanged, `as!SysTime` parses it
+* No `!!binary`, custom constructors / representers, or `Dumper` scalar and collection styles
+* Freshly built (detached) trees are emitted in a simple block style that differs from D-YAML's
+* Integers above `int.max` written in hex, octal or binary load correctly (D-YAML throws)
+
+### Naming
+
+The core API uses idiomatic names (`Document.parse`, `emit`, `get` / `set` by path, `appendItem`) because it is a path-addressed editor rather than a value tree. D-YAML's names live only in the compat module.
+
+## Installation
+
+Add to `dub.sdl`:
+
+```sdl
+dependency "yaml-edit" version="~>0.1.0"
+```
+
+Or `dub.json`:
+
+```json
+"dependencies": {
+    "yaml-edit": "~>0.1.0"
+}
+```
+
+## Testing
+
+```sh
+dub test --compiler=ldc2
+```
+
+The suite covers byte-exact round trips, antorareg-style playbook edits, error cases, a D-YAML oracle comparison and the dual-library test.
+
+## Changelog
+
+See [CHANGELOG](CHANGELOG.adoc).
+
+## License
+
+Boost Software License 1.0; see [LICENSE](LICENSE).
+
+## Contact
+
+DLang Supplemental (dlang@devcentr.org)
+
+* Project: https://github.com/dlang-supplemental/yaml-edit-d
+* Site: https://dlang-supplemental.github.io
+* DUB: https://code.dlang.org/packages/yaml-edit

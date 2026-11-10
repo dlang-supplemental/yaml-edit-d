@@ -30,6 +30,7 @@ machine.md
 !
 !LICENSE
 !README.adoc
+!/README.md
 !CHANGELOG.adoc
 !AGENTS.md
 !dub.sdl
