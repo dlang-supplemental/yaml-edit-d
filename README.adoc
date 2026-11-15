@@ -1,5 +1,6 @@
 ifndef::env-github[:icons: font]
-:toc: preamble
+:toc: macro
+:toc-title:
 :toclevels: 2
 :sectanchors:
 
@@ -40,6 +41,15 @@ Comment- and format-preserving (round-trip) YAML editing for the D programming l
 link:https://github.com/dlang-supplemental/yaml-edit-d/issues[Report Bug] ·
 link:https://github.com/dlang-supplemental/yaml-edit-d/issues[Request Feature]
 endif::[]
+
+++++
+<details>
+<summary>Table of Contents</summary>
+++++
+toc::[]
+++++
+</details>
+++++
 
 Package name on DUB: `yaml-edit`.
 
